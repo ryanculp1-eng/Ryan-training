@@ -233,6 +233,7 @@ const TrainingApp = () => {
       localStorage.setItem('ryan_start', today);
     }
     setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const saveWorkouts = (data) => {
