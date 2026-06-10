@@ -214,6 +214,9 @@ const TrainingApp = () => {
   const [selectedDay, setSelectedDay] = useState(null);
   const [loading, setLoading] = useState(true);
   const [celebration, setCelebration] = useState(null);
+  const [userName, setUserName] = useState('Ryan');
+  const [macroTargets, setMacroTargets] = useState(MACRO_TARGETS);
+  const [restDays, setRestDays] = useState({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -223,10 +226,17 @@ const TrainingApp = () => {
     const savedMacros = localStorage.getItem('ryan_macros');
     const savedBody = localStorage.getItem('ryan_body');
     const savedStart = localStorage.getItem('ryan_start');
+    const savedName = localStorage.getItem('ryan_name');
+    const savedTargets = localStorage.getItem('ryan_targets');
+    const savedRest = localStorage.getItem('ryan_rest');
 
     if (savedWorkouts) setWorkoutData(JSON.parse(savedWorkouts));
     if (savedMacros) setMacroData(JSON.parse(savedMacros));
     if (savedBody) setBodyData(JSON.parse(savedBody));
+    if (savedName) setUserName(savedName);
+    // Merge saved targets over defaults so any new macro keys still have a value
+    if (savedTargets) setMacroTargets({ ...MACRO_TARGETS, ...JSON.parse(savedTargets) });
+    if (savedRest) setRestDays(JSON.parse(savedRest));
     if (savedStart) setStartDate(savedStart);
     else {
       setStartDate(today);
@@ -247,6 +257,22 @@ const TrainingApp = () => {
   const saveBody = (data) => {
     setBodyData(data);
     localStorage.setItem('ryan_body', JSON.stringify(data));
+  };
+  const saveName = (name) => {
+    setUserName(name);
+    localStorage.setItem('ryan_name', name);
+  };
+  const saveTargets = (targets) => {
+    setMacroTargets(targets);
+    localStorage.setItem('ryan_targets', JSON.stringify(targets));
+  };
+  const saveStartDate = (date) => {
+    setStartDate(date);
+    localStorage.setItem('ryan_start', date);
+  };
+  const saveRestDays = (data) => {
+    setRestDays(data);
+    localStorage.setItem('ryan_rest', JSON.stringify(data));
   };
 
   if (loading) {
@@ -321,11 +347,12 @@ const TrainingApp = () => {
       `}</style>
 
       <div style={{ maxWidth: '480px', margin: '0 auto' }}>
-        {screen === 'home' && <HomeScreen {...{ today, todayMacros, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase }} />}
+        {screen === 'home' && <HomeScreen {...{ today, todayMacros, macroTargets, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, userName, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase, restDays, saveRestDays }} />}
         {screen === 'workout' && <WorkoutScreen {...{ setScreen, setSelectedDay, workoutData, currentPhase, currentWeek }} />}
         {screen === 'workoutDetail' && selectedDay && <WorkoutDetailScreen {...{ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek }} />}
-        {screen === 'macros' && <MacrosScreen {...{ setScreen, today, todayMacros, macroData, saveMacros, setCelebration }} />}
+        {screen === 'macros' && <MacrosScreen {...{ setScreen, today, todayMacros, macroTargets, macroData, saveMacros, setCelebration }} />}
         {screen === 'progress' && <ProgressScreen {...{ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements, totalXP, level }} />}
+        {screen === 'settings' && <SettingsScreen {...{ setScreen, userName, saveName, startDate, saveStartDate, macroTargets, saveTargets }} />}
       </div>
 
       <BottomNav screen={screen} setScreen={setScreen} />
@@ -334,17 +361,36 @@ const TrainingApp = () => {
 };
 
 // ============ HOME ============
-const HomeScreen = ({ today, todayMacros, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase }) => {
+const HomeScreen = ({ today, todayMacros, macroTargets, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, userName, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase, restDays, saveRestDays }) => {
   const recentBody = Object.keys(bodyData).sort().reverse()[0];
   const recentWeight = recentBody ? bodyData[recentBody].weight : '205';
   const dayOfWeek = new Date().getDay();
   const dayMap = { 1: 'Day 1', 2: 'Day 2', 3: 'Day 3', 4: 'Day 4', 5: 'Day 5' };
   const suggestedDay = dayMap[dayOfWeek] || 'Day 1';
   const completedToday = workoutData[today];
+  const isRestToday = !!restDays[today];
   const w = WORKOUTS[suggestedDay];
+  const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const skipToday = () => saveRestDays({ ...restDays, [today]: true });
+  const undoSkip = () => {
+    const next = { ...restDays };
+    delete next[today];
+    saveRestDays(next);
+  };
 
   return (
     <div style={{ padding: '24px 20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '800', color: '#6B21A8', letterSpacing: '0.5px' }}>
+          📅 {todayLabel}
+        </div>
+        <div
+          onClick={() => setScreen('settings')}
+          style={{ fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}
+          title="Settings"
+        >⚙️</div>
+      </div>
       <div style={{
         background: 'linear-gradient(135deg, #2D1B3D 0%, #6B21A8 100%)',
         borderRadius: '20px',
@@ -365,7 +411,7 @@ const HomeScreen = ({ today, todayMacros, workoutsThisWeek, bodyData, setScreen,
             }}>{level}</div>
             <div>
               <div style={{ fontSize: '11px', opacity: 0.7, fontWeight: '600' }}>LEVEL {level}</div>
-              <div style={{ fontSize: '15px', fontWeight: '800' }}>Ryan</div>
+              <div style={{ fontSize: '15px', fontWeight: '800' }}>{userName}</div>
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -414,54 +460,90 @@ const HomeScreen = ({ today, todayMacros, workoutsThisWeek, bodyData, setScreen,
         }}>WEEK {currentWeek}/12</div>
       </div>
 
-      <div style={{ fontSize: '12px', fontWeight: '800', color: '#6B21A8', letterSpacing: '1.5px', marginBottom: '8px' }}>
-        🔥 TODAY'S CHALLENGE
-      </div>
-      <div
-        onClick={() => { setSelectedDay(suggestedDay); setScreen('workoutDetail'); }}
-        style={{
-          background: `linear-gradient(135deg, ${w.gradient[0]} 0%, ${w.gradient[1]} 100%)`,
-          borderRadius: '24px',
-          padding: '24px',
-          marginBottom: '20px',
-          cursor: 'pointer',
-          color: '#fff',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: `0 12px 30px ${w.gradient[0]}55`
-        }}
-      >
-        <div style={{ position: 'absolute', right: '-20px', top: '-20px', fontSize: '120px', opacity: 0.15 }}>{w.emoji}</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative' }}>
-          <div>
-            <div style={{ fontSize: '32px', marginBottom: '8px', animation: 'bounce 2s ease infinite' }}>{w.emoji}</div>
-            <div style={{ fontSize: '11px', opacity: 0.9, fontWeight: '800', letterSpacing: '1.5px', marginBottom: '2px' }}>{suggestedDay.toUpperCase()}</div>
-            <div style={{ fontSize: '26px', fontWeight: '900', marginBottom: '2px', letterSpacing: '-0.5px' }}>{w.name}</div>
-            <div style={{ fontSize: '13px', opacity: 0.9, fontWeight: '600' }}>{w.focus}</div>
-          </div>
-          <div style={{
-            background: 'rgba(255,255,255,0.25)', borderRadius: '999px',
-            padding: '6px 14px', fontSize: '13px', fontWeight: '900',
-            display: 'flex', alignItems: 'center', gap: '4px',
-            backdropFilter: 'blur(8px)'
-          }}>
-            <Sparkles size={14} />+{w.xp} XP
-          </div>
-        </div>
+      {isRestToday ? (
         <div style={{
-          marginTop: '20px',
-          background: 'rgba(255,255,255,0.2)',
-          borderRadius: '14px',
-          padding: '14px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          backdropFilter: 'blur(8px)'
+          background: 'linear-gradient(135deg, #A855F7 0%, #6B21A8 100%)',
+          borderRadius: '24px',
+          padding: '28px 24px',
+          marginBottom: '20px',
+          color: '#fff',
+          textAlign: 'center',
+          boxShadow: '0 12px 30px rgba(108, 33, 168, 0.33)'
         }}>
-          <div style={{ fontSize: '13px', fontWeight: '800' }}>
-            {completedToday ? '✓ CRUSHED IT' : 'TAP TO START'}
-          </div>
-          {completedToday ? <Check size={20} /> : <ChevronRight size={20} />}
+          <div style={{ fontSize: '48px', marginBottom: '8px' }}>😴</div>
+          <div style={{ fontSize: '22px', fontWeight: '900', marginBottom: '4px' }}>Rest Day</div>
+          <div style={{ fontSize: '13px', opacity: 0.9, fontWeight: '600', marginBottom: '18px' }}>Recovery is where the gains happen.</div>
+          <div
+            onClick={undoSkip}
+            style={{
+              display: 'inline-block', background: 'rgba(255,255,255,0.25)',
+              borderRadius: '999px', padding: '8px 20px', fontSize: '13px',
+              fontWeight: '900', cursor: 'pointer', backdropFilter: 'blur(8px)'
+            }}
+          >↩ Undo — train instead</div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div style={{ fontSize: '12px', fontWeight: '800', color: '#6B21A8', letterSpacing: '1.5px', marginBottom: '8px' }}>
+            🔥 TODAY'S CHALLENGE
+          </div>
+          <div
+            onClick={() => { setSelectedDay(suggestedDay); setScreen('workoutDetail'); }}
+            style={{
+              background: `linear-gradient(135deg, ${w.gradient[0]} 0%, ${w.gradient[1]} 100%)`,
+              borderRadius: '24px',
+              padding: '24px',
+              marginBottom: '12px',
+              cursor: 'pointer',
+              color: '#fff',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: `0 12px 30px ${w.gradient[0]}55`
+            }}
+          >
+            <div style={{ position: 'absolute', right: '-20px', top: '-20px', fontSize: '120px', opacity: 0.15 }}>{w.emoji}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative' }}>
+              <div>
+                <div style={{ fontSize: '32px', marginBottom: '8px', animation: 'bounce 2s ease infinite' }}>{w.emoji}</div>
+                <div style={{ fontSize: '11px', opacity: 0.9, fontWeight: '800', letterSpacing: '1.5px', marginBottom: '2px' }}>{suggestedDay.toUpperCase()}</div>
+                <div style={{ fontSize: '26px', fontWeight: '900', marginBottom: '2px', letterSpacing: '-0.5px' }}>{w.name}</div>
+                <div style={{ fontSize: '13px', opacity: 0.9, fontWeight: '600' }}>{w.focus}</div>
+              </div>
+              <div style={{
+                background: 'rgba(255,255,255,0.25)', borderRadius: '999px',
+                padding: '6px 14px', fontSize: '13px', fontWeight: '900',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                backdropFilter: 'blur(8px)'
+              }}>
+                <Sparkles size={14} />+{w.xp} XP
+              </div>
+            </div>
+            <div style={{
+              marginTop: '20px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '14px',
+              padding: '14px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              backdropFilter: 'blur(8px)'
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: '800' }}>
+                {completedToday ? '✓ CRUSHED IT' : 'TAP TO START'}
+              </div>
+              {completedToday ? <Check size={20} /> : <ChevronRight size={20} />}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <div
+              onClick={() => setScreen('workout')}
+              style={{ flex: 1, textAlign: 'center', background: '#fff', border: '2px solid #F1E5F5', borderRadius: '14px', padding: '12px', fontSize: '13px', fontWeight: '900', color: '#6B21A8', cursor: 'pointer' }}
+            >🔄 Swap day</div>
+            <div
+              onClick={skipToday}
+              style={{ flex: 1, textAlign: 'center', background: '#fff', border: '2px solid #F1E5F5', borderRadius: '14px', padding: '12px', fontSize: '13px', fontWeight: '900', color: '#9CA3AF', cursor: 'pointer' }}
+            >😴 Skip / Rest</div>
+          </div>
+        </>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
         <FunStat emoji="🔥" label="WEEK STREAK" value={`${workoutsThisWeek}/5`} bg="#FFEDD5" accent="#EA580C" />
@@ -487,17 +569,17 @@ const HomeScreen = ({ today, todayMacros, workoutsThisWeek, bodyData, setScreen,
           </div>
           <ChevronRight size={18} color="#A855F7" />
         </div>
-        <FunMacroBar label="Protein" emoji="🍗" current={todayMacros.protein} target={MACRO_TARGETS.protein} color="#FF6B6B" unit="g" />
-        <FunMacroBar label="Carbs" emoji="🍚" current={todayMacros.carbs} target={MACRO_TARGETS.carbs} color="#4D96FF" unit="g" />
-        <FunMacroBar label="Fat" emoji="🥑" current={todayMacros.fat} target={MACRO_TARGETS.fat} color="#FFD93D" unit="g" />
+        <FunMacroBar label="Protein" emoji="🍗" current={todayMacros.protein} target={macroTargets.protein} color="#FF6B6B" unit="g" />
+        <FunMacroBar label="Carbs" emoji="🍚" current={todayMacros.carbs} target={macroTargets.carbs} color="#4D96FF" unit="g" />
+        <FunMacroBar label="Fat" emoji="🥑" current={todayMacros.fat} target={macroTargets.fat} color="#FFD93D" unit="g" />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '14px', paddingTop: '14px', borderTop: '2px dashed #F1E5F5' }}>
           <div>
             <div style={{ fontSize: '10px', color: '#A855F7', fontWeight: '800', letterSpacing: '1px' }}>CALORIES</div>
-            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{todayMacros.calories} <span style={{ fontSize: '12px', color: '#9CA3AF' }}>/ {MACRO_TARGETS.calories}</span></div>
+            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{todayMacros.calories} <span style={{ fontSize: '12px', color: '#9CA3AF' }}>/ {macroTargets.calories}</span></div>
           </div>
           <div>
             <div style={{ fontSize: '10px', color: '#A855F7', fontWeight: '800', letterSpacing: '1px' }}>💧 WATER</div>
-            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{todayMacros.water} <span style={{ fontSize: '12px', color: '#9CA3AF' }}>/ {MACRO_TARGETS.water}</span></div>
+            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{todayMacros.water} <span style={{ fontSize: '12px', color: '#9CA3AF' }}>/ {macroTargets.water}</span></div>
           </div>
         </div>
       </div>
@@ -636,6 +718,7 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
     initialSets[ex.name] = exSets;
   });
   const [sets, setSets] = useState(initialSets);
+  const [notes, setNotes] = useState(workoutData[today]?.day === selectedDay ? (workoutData[today].notes || '') : '');
 
   const updateSet = (exName, setIdx, field, value) => {
     setSets(prev => ({
@@ -655,7 +738,7 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
   const progress = (completedSets / totalSets) * 100;
 
   const completeWorkout = () => {
-    const updated = { ...workoutData, [today]: { day: selectedDay, sets, completedAt: new Date().toISOString(), phase: currentPhase, week: currentWeek } };
+    const updated = { ...workoutData, [today]: { day: selectedDay, sets, notes, completedAt: new Date().toISOString(), phase: currentPhase, week: currentWeek } };
     saveWorkouts(updated);
     setCelebration({ emoji: w.emoji, title: 'WORKOUT COMPLETE!', desc: w.name, xp: w.xp });
     setTimeout(() => setScreen('home'), 2000);
@@ -793,6 +876,32 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
         );
       })}
 
+      <div style={{
+        background: '#fff',
+        borderRadius: '18px',
+        padding: '16px',
+        marginBottom: '12px',
+        border: '2px solid #F1E5F5',
+        boxShadow: '0 4px 12px rgba(45, 27, 61, 0.05)'
+      }}>
+        <div style={{ fontSize: '13px', fontWeight: '900', color: '#2D1B3D', marginBottom: '8px' }}>
+          📝 How did it feel?
+        </div>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Energy, soreness, PRs, anything worth remembering…"
+          rows={3}
+          style={{
+            width: '100%', background: '#FFF5E6',
+            border: '2px solid #FEF3C7', borderRadius: '12px',
+            padding: '10px', color: '#2D1B3D', fontSize: '14px',
+            fontWeight: '600', fontFamily: 'inherit', outline: 'none',
+            resize: 'vertical', boxSizing: 'border-box'
+          }}
+        />
+      </div>
+
       <button
         onClick={completeWorkout}
         style={{
@@ -812,7 +921,7 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
 };
 
 // ============ MACROS ============
-const MacrosScreen = ({ setScreen, today, todayMacros, macroData, saveMacros, setCelebration }) => {
+const MacrosScreen = ({ setScreen, today, todayMacros, macroTargets, macroData, saveMacros, setCelebration }) => {
   const [values, setValues] = useState(todayMacros);
 
   const update = (field, val) => {
@@ -820,7 +929,7 @@ const MacrosScreen = ({ setScreen, today, todayMacros, macroData, saveMacros, se
     const updated = { ...values, [field]: num };
     setValues(updated);
     saveMacros({ ...macroData, [today]: updated });
-    if (field === 'protein' && num >= MACRO_TARGETS.protein && todayMacros.protein < MACRO_TARGETS.protein) {
+    if (field === 'protein' && num >= macroTargets.protein && todayMacros.protein < macroTargets.protein) {
       setCelebration({ emoji: '🍗', title: 'PROTEIN HIT!', desc: 'Daily target smashed', xp: null });
       setTimeout(() => setCelebration(null), 2000);
     }
@@ -831,7 +940,7 @@ const MacrosScreen = ({ setScreen, today, todayMacros, macroData, saveMacros, se
     const updated = { ...values, [field]: newVal };
     setValues(updated);
     saveMacros({ ...macroData, [today]: updated });
-    if (field === 'protein' && newVal >= MACRO_TARGETS.protein && (values.protein || 0) < MACRO_TARGETS.protein) {
+    if (field === 'protein' && newVal >= macroTargets.protein && (values.protein || 0) < macroTargets.protein) {
       setCelebration({ emoji: '🍗', title: 'PROTEIN HIT!', desc: 'Daily target smashed', xp: null });
       setTimeout(() => setCelebration(null), 2000);
     }
@@ -853,16 +962,16 @@ const MacrosScreen = ({ setScreen, today, todayMacros, macroData, saveMacros, se
           {values.calories}
         </div>
         <div style={{ fontSize: '13px', opacity: 0.9, fontWeight: '600', marginTop: '4px' }}>
-          of {MACRO_TARGETS.calories} · {Math.max(0, MACRO_TARGETS.calories - values.calories)} to go
+          of {macroTargets.calories} · {Math.max(0, macroTargets.calories - values.calories)} to go
         </div>
       </div>
 
-      <FunMacroInput emoji="🍗" label="Protein" field="protein" value={values.protein} target={MACRO_TARGETS.protein} color="#FF6B6B" bg="#FEE2E2" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[20, 30, 45]} />
-      <FunMacroInput emoji="🍚" label="Carbs" field="carbs" value={values.carbs} target={MACRO_TARGETS.carbs} color="#4D96FF" bg="#DBEAFE" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[30, 50, 70]} />
-      <FunMacroInput emoji="🥑" label="Fat" field="fat" value={values.fat} target={MACRO_TARGETS.fat} color="#F59E0B" bg="#FEF3C7" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[10, 15, 25]} />
-      <FunMacroInput emoji="🥦" label="Fiber" field="fiber" value={values.fiber} target={MACRO_TARGETS.fiber} color="#10B981" bg="#D1FAE5" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[5, 8, 12]} />
-      <FunMacroInput emoji="💧" label="Water" field="water" value={values.water} target={MACRO_TARGETS.water} color="#06B6D4" bg="#CFFAFE" unit=" cups" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[1, 2, 4]} />
-      <FunMacroInput emoji="⚡" label="Calories" field="calories" value={values.calories} target={MACRO_TARGETS.calories} color="#A855F7" bg="#F3E8FF" unit="" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[100, 300, 500]} />
+      <FunMacroInput emoji="🍗" label="Protein" field="protein" value={values.protein} target={macroTargets.protein} color="#FF6B6B" bg="#FEE2E2" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[20, 30, 45]} />
+      <FunMacroInput emoji="🍚" label="Carbs" field="carbs" value={values.carbs} target={macroTargets.carbs} color="#4D96FF" bg="#DBEAFE" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[30, 50, 70]} />
+      <FunMacroInput emoji="🥑" label="Fat" field="fat" value={values.fat} target={macroTargets.fat} color="#F59E0B" bg="#FEF3C7" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[10, 15, 25]} />
+      <FunMacroInput emoji="🥦" label="Fiber" field="fiber" value={values.fiber} target={macroTargets.fiber} color="#10B981" bg="#D1FAE5" unit="g" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[5, 8, 12]} />
+      <FunMacroInput emoji="💧" label="Water" field="water" value={values.water} target={macroTargets.water} color="#06B6D4" bg="#CFFAFE" unit=" cups" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[1, 2, 4]} />
+      <FunMacroInput emoji="⚡" label="Calories" field="calories" value={values.calories} target={macroTargets.calories} color="#A855F7" bg="#F3E8FF" unit="" onUpdate={update} onQuickAdd={quickAdd} quickAmounts={[100, 300, 500]} />
     </div>
   );
 };
@@ -1161,6 +1270,87 @@ const BottomNav = ({ screen, setScreen }) => {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+};
+
+// ============ SETTINGS ============
+const SettingsScreen = ({ setScreen, userName, saveName, startDate, saveStartDate, macroTargets, saveTargets }) => {
+  const macroFields = [
+    { key: 'calories', label: 'Calories', emoji: '⚡', unit: '' },
+    { key: 'protein', label: 'Protein', emoji: '🍗', unit: 'g' },
+    { key: 'carbs', label: 'Carbs', emoji: '🍚', unit: 'g' },
+    { key: 'fat', label: 'Fat', emoji: '🥑', unit: 'g' },
+    { key: 'fiber', label: 'Fiber', emoji: '🥦', unit: 'g' },
+    { key: 'water', label: 'Water', emoji: '💧', unit: 'cups' }
+  ];
+
+  const updateTarget = (key, val) => {
+    saveTargets({ ...macroTargets, [key]: parseInt(val) || 0 });
+  };
+
+  const cardStyle = {
+    background: '#fff', borderRadius: '20px', padding: '20px',
+    marginBottom: '16px', boxShadow: '0 6px 18px rgba(45, 27, 61, 0.08)',
+    border: '2px solid #F1E5F5'
+  };
+  const labelStyle = { fontSize: '11px', fontWeight: '900', color: '#6B21A8', letterSpacing: '1px', marginBottom: '8px' };
+  const inputStyle = {
+    width: '100%', background: '#FFF5E6', border: '2px solid #FEF3C7',
+    borderRadius: '12px', padding: '12px', color: '#2D1B3D',
+    fontSize: '15px', fontWeight: '800', fontFamily: 'inherit',
+    outline: 'none', boxSizing: 'border-box'
+  };
+
+  return (
+    <div style={{ padding: '24px 20px' }}>
+      <div onClick={() => setScreen('home')} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#6B21A8', fontSize: '13px', fontWeight: '800', marginBottom: '16px', cursor: 'pointer', background: '#fff', padding: '8px 14px', borderRadius: '999px' }}>
+        <X size={14} /> Back
+      </div>
+
+      <FunHeader emoji="⚙️" title="Settings" subtitle="Make it yours" />
+
+      <div style={cardStyle}>
+        <div style={labelStyle}>YOUR NAME</div>
+        <input
+          type="text"
+          value={userName}
+          onChange={(e) => saveName(e.target.value)}
+          placeholder="Name"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={cardStyle}>
+        <div style={labelStyle}>PROGRAM START DATE</div>
+        <input
+          type="date"
+          value={startDate || ''}
+          onChange={(e) => saveStartDate(e.target.value)}
+          style={inputStyle}
+        />
+        <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '700', marginTop: '8px' }}>
+          Sets your current week & phase in the 12-week cycle.
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={labelStyle}>DAILY MACRO TARGETS</div>
+        {macroFields.map(f => (
+          <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+            <div style={{ fontSize: '20px', width: '28px', textAlign: 'center' }}>{f.emoji}</div>
+            <div style={{ flex: 1, fontSize: '14px', fontWeight: '800', color: '#2D1B3D' }}>
+              {f.label} <span style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '600' }}>{f.unit && `(${f.unit})`}</span>
+            </div>
+            <input
+              type="number"
+              value={macroTargets[f.key]}
+              onChange={(e) => updateTarget(f.key, e.target.value)}
+              style={{ ...inputStyle, width: '90px', textAlign: 'center', padding: '8px' }}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
