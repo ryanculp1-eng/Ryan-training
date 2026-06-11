@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, ChevronRight, X, Trophy, Sparkles } from 'lucide-react';
+import { Check, ChevronRight, X, Trophy, Sparkles, Repeat } from 'lucide-react';
 
 const WORKOUTS = {
   'Day 1': {
@@ -205,6 +205,38 @@ const getPhaseFromWeek = (week) => {
   return 3;
 };
 
+// Estimated 1-rep-max (Epley formula) — used to rank sets for personal records
+const estimate1RM = (weight, reps) => {
+  const w = parseFloat(weight);
+  const r = parseFloat(reps);
+  if (!w || !r) return 0;
+  return w * (1 + r / 30);
+};
+
+// Every exercise across all days & phases, deduplicated by name (A→Z) — powers the swap picker
+const ALL_EXERCISES = (() => {
+  const seen = {};
+  Object.values(WORKOUTS).forEach(day => {
+    Object.values(day.exercises).forEach(phaseList => {
+      phaseList.forEach(ex => { if (!seen[ex.name]) seen[ex.name] = ex; });
+    });
+  });
+  return Object.values(seen).sort((a, b) => a.name.localeCompare(b.name));
+})();
+
+// Most recent earlier session's logged sets for an exercise, formatted as readable text
+const getLastPerformance = (exName, workoutData, today) => {
+  const dates = Object.keys(workoutData).filter(d => d !== today).sort().reverse();
+  for (const date of dates) {
+    const exSets = workoutData[date].sets && workoutData[date].sets[exName];
+    if (!exSets) continue;
+    const logged = exSets.filter(s => s.weight || s.reps);
+    if (logged.length === 0) continue;
+    return logged.map(s => (s.weight ? `${s.weight}lb × ${s.reps || '?'}` : `${s.reps} reps`)).join(', ');
+  }
+  return null;
+};
+
 const TrainingApp = () => {
   const [screen, setScreen] = useState('home');
   const [workoutData, setWorkoutData] = useState({});
@@ -217,6 +249,8 @@ const TrainingApp = () => {
   const [userName, setUserName] = useState('Ryan');
   const [macroTargets, setMacroTargets] = useState(MACRO_TARGETS);
   const [restDays, setRestDays] = useState({});
+  const [prs, setPrs] = useState({});
+  const [swaps, setSwaps] = useState({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -229,6 +263,8 @@ const TrainingApp = () => {
     const savedName = localStorage.getItem('ryan_name');
     const savedTargets = localStorage.getItem('ryan_targets');
     const savedRest = localStorage.getItem('ryan_rest');
+    const savedPRs = localStorage.getItem('ryan_prs');
+    const savedSwaps = localStorage.getItem('ryan_swaps');
 
     if (savedWorkouts) setWorkoutData(JSON.parse(savedWorkouts));
     if (savedMacros) setMacroData(JSON.parse(savedMacros));
@@ -237,6 +273,8 @@ const TrainingApp = () => {
     // Merge saved targets over defaults so any new macro keys still have a value
     if (savedTargets) setMacroTargets({ ...MACRO_TARGETS, ...JSON.parse(savedTargets) });
     if (savedRest) setRestDays(JSON.parse(savedRest));
+    if (savedPRs) setPrs(JSON.parse(savedPRs));
+    if (savedSwaps) setSwaps(JSON.parse(savedSwaps));
     if (savedStart) setStartDate(savedStart);
     else {
       setStartDate(today);
@@ -273,6 +311,14 @@ const TrainingApp = () => {
   const saveRestDays = (data) => {
     setRestDays(data);
     localStorage.setItem('ryan_rest', JSON.stringify(data));
+  };
+  const savePRs = (data) => {
+    setPrs(data);
+    localStorage.setItem('ryan_prs', JSON.stringify(data));
+  };
+  const saveSwaps = (data) => {
+    setSwaps(data);
+    localStorage.setItem('ryan_swaps', JSON.stringify(data));
   };
 
   if (loading) {
@@ -325,6 +371,19 @@ const TrainingApp = () => {
             <div style={{ fontSize: '72px', marginBottom: '12px' }}>{celebration.emoji}</div>
             <div style={{ fontSize: '24px', fontWeight: '900', color: '#fff', marginBottom: '8px' }}>{celebration.title}</div>
             <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.9)', fontWeight: '600' }}>{celebration.desc}</div>
+            {celebration.durationSec != null && (
+              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.95)', fontWeight: '800', marginTop: '10px' }}>
+                ⏱ Completed in {Math.max(1, Math.round(celebration.durationSec / 60))} min
+              </div>
+            )}
+            {celebration.prs && celebration.prs.length > 0 && (
+              <div style={{ marginTop: '14px', background: 'rgba(0,0,0,0.18)', borderRadius: '14px', padding: '12px 14px', textAlign: 'left' }}>
+                <div style={{ fontSize: '11px', fontWeight: '900', color: '#fff', letterSpacing: '1px', marginBottom: '6px' }}>🏆 NEW PERSONAL RECORDS</div>
+                {celebration.prs.map(pr => (
+                  <div key={pr.name} style={{ fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.95)' }}>{pr.name}: {pr.weight}lb × {pr.reps}</div>
+                ))}
+              </div>
+            )}
             {celebration.xp && <div style={{ fontSize: '20px', fontWeight: '900', color: '#fff', marginTop: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '999px', padding: '8px 24px', display: 'inline-block' }}>+{celebration.xp} XP</div>}
           </div>
         </div>
@@ -349,7 +408,7 @@ const TrainingApp = () => {
       <div style={{ maxWidth: '480px', margin: '0 auto' }}>
         {screen === 'home' && <HomeScreen {...{ today, todayMacros, macroTargets, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, userName, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase, restDays, saveRestDays }} />}
         {screen === 'workout' && <WorkoutScreen {...{ setScreen, setSelectedDay, workoutData, currentPhase, currentWeek }} />}
-        {screen === 'workoutDetail' && selectedDay && <WorkoutDetailScreen {...{ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek }} />}
+        {screen === 'workoutDetail' && selectedDay && <WorkoutDetailScreen {...{ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek, prs, savePRs, swaps, saveSwaps }} />}
         {screen === 'macros' && <MacrosScreen {...{ setScreen, today, todayMacros, macroTargets, macroData, saveMacros, setCelebration }} />}
         {screen === 'progress' && <ProgressScreen {...{ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements, totalXP, level }} />}
         {screen === 'settings' && <SettingsScreen {...{ setScreen, userName, saveName, startDate, saveStartDate, macroTargets, saveTargets }} />}
@@ -707,23 +766,38 @@ const WorkoutScreen = ({ setScreen, setSelectedDay, workoutData, currentPhase, c
 };
 
 // ============ WORKOUT DETAIL ============
-const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek }) => {
+const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek, prs, savePRs, swaps, saveSwaps }) => {
   const w = WORKOUTS[selectedDay];
-  const exercises = w.exercises[currentPhase];
+  const baseExercises = w.exercises[currentPhase];
+  const daySwaps = swaps[selectedDay] || {};
+  // The exercises actually shown: each base slot is replaced by its swapped-in exercise, if any
+  const effectiveExercises = baseExercises.map(baseEx => daySwaps[baseEx.name] || baseEx);
   const existing = workoutData[today]?.day === selectedDay ? workoutData[today].sets : {};
 
   const initialSets = {};
-  exercises.forEach(ex => {
+  effectiveExercises.forEach(ex => {
     const exSets = existing[ex.name] || Array(ex.sets).fill(null).map(() => ({ weight: '', reps: '', done: false }));
     initialSets[ex.name] = exSets;
   });
   const [sets, setSets] = useState(initialSets);
   const [notes, setNotes] = useState(workoutData[today]?.day === selectedDay ? (workoutData[today].notes || '') : '');
+  const [swapTarget, setSwapTarget] = useState(null);
+  const [swapQuery, setSwapQuery] = useState('');
+  const [startTime, setStartTime] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  // Snapshot all-time PRs when the screen opens so live 🏆 markers don't shift as you log
+  const [basePRs] = useState(prs);
 
   const updateSet = (exName, setIdx, field, value) => {
     setSets(prev => ({
       ...prev,
-      [exName]: prev[exName].map((s, i) => i === setIdx ? { ...s, [field]: value } : s)
+      [exName]: prev[exName].map((s, i) => {
+        if (i !== setIdx) return s;
+        const next = { ...s, [field]: value };
+        // Auto-check the set once both weight and reps are filled (never auto-unchecks)
+        if (next.weight !== '' && next.reps !== '') next.done = true;
+        return next;
+      })
     }));
   };
   const toggleDone = (exName, setIdx) => {
@@ -733,14 +807,71 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
     }));
   };
 
-  const totalSets = exercises.reduce((sum, ex) => sum + ex.sets, 0);
-  const completedSets = Object.values(sets).flat().filter(s => s.done).length;
+  const applySwap = (originalName, newEx) => {
+    saveSwaps({ ...swaps, [selectedDay]: { ...daySwaps, [originalName]: newEx } });
+    setSets(prev => ({
+      ...prev,
+      [newEx.name]: prev[newEx.name] || Array(newEx.sets).fill(null).map(() => ({ weight: '', reps: '', done: false }))
+    }));
+    setSwapTarget(null);
+    setSwapQuery('');
+  };
+
+  const totalSets = effectiveExercises.reduce((sum, ex) => sum + ex.sets, 0);
+  const completedSets = effectiveExercises.reduce((sum, ex) => sum + ((sets[ex.name] || []).filter(s => s.done).length), 0);
   const progress = (completedSets / totalSets) * 100;
 
+  // Start the timer the moment the first set is checked
+  useEffect(() => {
+    if (completedSets > 0 && !startTime) setStartTime(Date.now());
+  }, [completedSets, startTime]);
+
+  // Tick once a second while the timer is running
+  useEffect(() => {
+    if (!startTime) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startTime]);
+
+  const elapsedSec = startTime ? Math.floor((now - startTime) / 1000) : 0;
+  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
   const completeWorkout = () => {
-    const updated = { ...workoutData, [today]: { day: selectedDay, sets, notes, completedAt: new Date().toISOString(), phase: currentPhase, week: currentWeek } };
+    const effectiveNames = effectiveExercises.map(ex => ex.name);
+    const cleanSets = {};
+    effectiveNames.forEach(n => { cleanSets[n] = sets[n] || []; });
+
+    // Detect new personal records: best done set per exercise vs. the stored PR
+    const updatedPRs = { ...prs };
+    const newPRs = [];
+    effectiveNames.forEach(n => {
+      let best = null;
+      (cleanSets[n] || []).forEach(s => {
+        if (!s.done) return;
+        const e = estimate1RM(s.weight, s.reps);
+        if (e > 0 && (!best || e > best.e1rm)) best = { e1rm: e, weight: s.weight, reps: s.reps };
+      });
+      if (best) {
+        const prev = updatedPRs[n];
+        if (!prev || best.e1rm > prev.e1rm) {
+          updatedPRs[n] = { e1rm: best.e1rm, weight: best.weight, reps: best.reps, date: today };
+          newPRs.push({ name: n, weight: best.weight, reps: best.reps });
+        }
+      }
+    });
+    if (newPRs.length) savePRs(updatedPRs);
+
+    // Clear this day's swaps so the next session starts from the default plan
+    if (Object.keys(daySwaps).length) {
+      const nextSwaps = { ...swaps };
+      delete nextSwaps[selectedDay];
+      saveSwaps(nextSwaps);
+    }
+
+    const durationSec = startTime ? Math.round((Date.now() - startTime) / 1000) : null;
+    const updated = { ...workoutData, [today]: { day: selectedDay, sets: cleanSets, notes, completedAt: new Date().toISOString(), phase: currentPhase, week: currentWeek, durationSec } };
     saveWorkouts(updated);
-    setCelebration({ emoji: w.emoji, title: 'WORKOUT COMPLETE!', desc: w.name, xp: w.xp });
+    setCelebration({ emoji: w.emoji, title: 'WORKOUT COMPLETE!', desc: w.name, xp: w.xp, prs: newPRs, durationSec });
     setTimeout(() => setScreen('home'), 2000);
   };
 
@@ -766,8 +897,11 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
           <div style={{ fontSize: '28px', fontWeight: '900', letterSpacing: '-0.5px', marginTop: '2px' }}>{w.name}</div>
           <div style={{ fontSize: '13px', opacity: 0.9, fontWeight: '600', marginTop: '2px' }}>{PHASES[currentPhase].setRep}</div>
           <div style={{ marginTop: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '800', marginBottom: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', fontWeight: '800', marginBottom: '4px' }}>
               <span>{completedSets}/{totalSets} SETS</span>
+              {startTime && (
+                <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: '999px', padding: '2px 10px', backdropFilter: 'blur(8px)' }}>⏱ {fmtTime(elapsedSec)}</span>
+              )}
               <span>{Math.round(progress)}%</span>
             </div>
             <div style={{ height: '10px', background: 'rgba(255,255,255,0.25)', borderRadius: '5px', overflow: 'hidden' }}>
@@ -777,11 +911,21 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
         </div>
       </div>
 
-      {exercises.map((ex, i) => {
-        const exSets = sets[ex.name];
-        const allDone = exSets.every(s => s.done);
+      {baseExercises.map((baseEx, i) => {
+        const ex = daySwaps[baseEx.name] || baseEx;
+        const exSets = sets[ex.name] || [];
+        const allDone = exSets.length > 0 && exSets.every(s => s.done);
+        const lastPerf = getLastPerformance(ex.name, workoutData, today);
+        // Mark each set that sets a new running best beyond the all-time PR snapshot
+        let runBest = (basePRs[ex.name] && basePRs[ex.name].e1rm) || 0;
+        const trophies = exSets.map(s => {
+          if (!s.done) return false;
+          const e = estimate1RM(s.weight, s.reps);
+          if (e > 0 && e > runBest) { runBest = e; return true; }
+          return false;
+        });
         return (
-          <div key={ex.name} style={{
+          <div key={baseEx.name} style={{
             background: '#fff',
             borderRadius: '18px',
             padding: '16px',
@@ -796,11 +940,23 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
                 borderRadius: '50%',
                 width: '30px', height: '30px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '13px', fontWeight: '900'
+                fontSize: '13px', fontWeight: '900', flexShrink: 0
               }}>
                 {allDone ? <Check size={16} /> : i + 1}
               </div>
-              <div style={{ fontSize: '15px', fontWeight: '800', color: '#2D1B3D', flex: 1 }}>{ex.name}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#2D1B3D' }}>{ex.name}</div>
+                <div style={{ fontSize: '11px', color: '#9CA3AF', fontWeight: '700', marginTop: '2px' }}>
+                  {lastPerf ? `Last: ${lastPerf}` : 'First time!'}
+                </div>
+              </div>
+              <div
+                onClick={() => { setSwapTarget(baseEx.name); setSwapQuery(''); }}
+                title="Swap exercise"
+                style={{ flexShrink: 0, color: '#A855F7', cursor: 'pointer', display: 'flex', alignItems: 'center', background: '#F3E8FF', borderRadius: '10px', padding: '6px' }}
+              >
+                <Repeat size={16} />
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
@@ -826,10 +982,14 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
               {exSets.map((set, setIdx) => (
                 <div key={setIdx} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 30px', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
                   <div style={{
+                    position: 'relative',
                     fontSize: '13px', fontWeight: '900',
                     color: set.done ? w.gradient[0] : '#9CA3AF',
                     textAlign: 'center'
-                  }}>{setIdx + 1}</div>
+                  }}>
+                    {setIdx + 1}
+                    {trophies[setIdx] && <span style={{ position: 'absolute', top: '-9px', right: '-3px', fontSize: '12px' }}>🏆</span>}
+                  </div>
                   <input
                     type="number"
                     placeholder="lb"
@@ -875,6 +1035,45 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
           </div>
         );
       })}
+
+      {swapTarget && (
+        <div
+          onClick={() => { setSwapTarget(null); setSwapQuery(''); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(45, 27, 61, 0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', width: '100%', maxWidth: '480px', borderRadius: '24px 24px 0 0', padding: '20px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 30px rgba(45, 27, 61, 0.25)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontSize: '17px', fontWeight: '900', color: '#2D1B3D' }}>🔄 Swap exercise</div>
+              <div onClick={() => { setSwapTarget(null); setSwapQuery(''); }} style={{ cursor: 'pointer', color: '#9CA3AF' }}><X size={20} /></div>
+            </div>
+            <input
+              autoFocus
+              value={swapQuery}
+              onChange={(e) => setSwapQuery(e.target.value)}
+              placeholder="Search exercises…"
+              style={{ width: '100%', background: '#FFF5E6', border: '2px solid #FEF3C7', borderRadius: '12px', padding: '12px', color: '#2D1B3D', fontSize: '15px', fontWeight: '700', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+            />
+            <div style={{ overflowY: 'auto', marginTop: '12px' }}>
+              {ALL_EXERCISES.filter(ex => ex.name.toLowerCase().includes(swapQuery.toLowerCase())).map(ex => (
+                <div
+                  key={ex.name}
+                  onClick={() => applySwap(swapTarget, ex)}
+                  style={{ padding: '12px 14px', borderRadius: '12px', marginBottom: '6px', background: '#FFF5E6', border: '2px solid #FEF3C7', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: '800', color: '#2D1B3D' }}>{ex.name}</div>
+                    <div style={{ fontSize: '11px', color: '#6B21A8', fontWeight: '600' }}>{ex.sets} × {ex.reps}</div>
+                  </div>
+                  <ChevronRight size={16} color="#A855F7" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{
         background: '#fff',
@@ -1060,6 +1259,9 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
   const totalMacroDays = Object.keys(macroData).length;
   const recentEntries = bodyEntryDates.slice(0, 5);
 
+  const durations = Object.values(workoutData).map(wd => wd.durationSec).filter(d => d != null && d > 0);
+  const avgDurationMin = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length / 60) : null;
+
   return (
     <div style={{ padding: '24px 20px' }}>
       <FunHeader emoji="🏆" title="Your Journey" subtitle="The receipts don't lie" />
@@ -1069,6 +1271,20 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
         <BigFunStat emoji="🍽️" value={totalMacroDays} label="DAYS LOGGED" bg="#FEF3C7" color="#D97706" />
         <BigFunStat emoji="⚖️" value={Object.keys(bodyData).length} label="WEIGH-INS" bg="#DBEAFE" color="#2563EB" />
       </div>
+
+      {avgDurationMin != null && (
+        <div style={{
+          background: '#fff', borderRadius: '20px', padding: '16px',
+          marginBottom: '20px', boxShadow: '0 6px 18px rgba(45, 27, 61, 0.08)',
+          border: '2px solid #F1E5F5', display: 'flex', alignItems: 'center', gap: '14px'
+        }}>
+          <div style={{ fontSize: '30px' }}>⏱</div>
+          <div>
+            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{avgDurationMin} min</div>
+            <div style={{ fontSize: '10px', fontWeight: '800', color: '#6B21A8', letterSpacing: '1px' }}>AVG WORKOUT DURATION</div>
+          </div>
+        </div>
+      )}
 
       <div style={{
         background: '#fff',
