@@ -882,6 +882,15 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
 
   const swapMatches = ALL_EXERCISES.filter(ex => ex.name.toLowerCase().includes(swapQuery.toLowerCase()));
 
+  // Pressing Enter jumps to the next weight/reps box in on-screen order
+  const handleSetEnter = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const inputs = Array.from(document.querySelectorAll('.set-input'));
+    const next = inputs[inputs.indexOf(e.target) + 1];
+    if (next) next.focus();
+  };
+
   const completeWorkout = () => {
     const effectiveNames = effectiveExercises.map(ex => ex.name);
     const cleanSets = {};
@@ -1040,9 +1049,11 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
                   </div>
                   <input
                     type="number"
+                    className="set-input"
                     placeholder="lb"
                     value={set.weight}
                     onChange={(e) => updateSet(ex.name, setIdx, 'weight', e.target.value)}
+                    onKeyDown={handleSetEnter}
                     style={{
                       width: '100%', background: '#fff',
                       border: `2px solid ${set.done ? w.gradient[0] : '#2563EB'}55`,
@@ -1053,9 +1064,11 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
                   />
                   <input
                     type="number"
+                    className="set-input"
                     placeholder="reps"
                     value={set.reps}
                     onChange={(e) => updateSet(ex.name, setIdx, 'reps', e.target.value)}
+                    onKeyDown={handleSetEnter}
                     style={{
                       width: '100%', background: '#fff',
                       border: `2px solid ${set.done ? w.gradient[0] : '#DC2626'}55`,
