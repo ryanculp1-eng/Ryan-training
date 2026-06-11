@@ -451,6 +451,7 @@ const TrainingApp = () => {
         {screen === 'workoutDetail' && selectedDay && <WorkoutDetailScreen {...{ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek, prs, savePRs, swaps, saveSwaps }} />}
         {screen === 'macros' && <MacrosScreen {...{ setScreen, today, todayMacros, macroTargets, macroData, saveMacros, setCelebration }} />}
         {screen === 'progress' && <ProgressScreen {...{ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements, totalXP, level }} />}
+        {screen === 'history' && <HistoryScreen {...{ setScreen, workoutData }} />}
         {screen === 'settings' && <SettingsScreen {...{ setScreen, userName, saveName, startDate, saveStartDate, macroTargets, saveTargets }} />}
       </div>
 
@@ -1323,6 +1324,25 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
         <BigFunStat emoji="⚖️" value={Object.keys(bodyData).length} label="WEIGH-INS" bg="#DBEAFE" color="#2563EB" />
       </div>
 
+      <div
+        onClick={() => setScreen('history')}
+        style={{
+          background: '#fff', borderRadius: '20px', padding: '16px 20px',
+          marginBottom: '20px', cursor: 'pointer',
+          boxShadow: '0 6px 18px rgba(45, 27, 61, 0.08)', border: '2px solid #F1E5F5',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '24px' }}>📖</div>
+          <div>
+            <div style={{ fontSize: '15px', fontWeight: '900', color: '#2D1B3D' }}>Workout History</div>
+            <div style={{ fontSize: '12px', color: '#6B21A8', fontWeight: '700' }}>{totalWorkouts} logged · tap to view</div>
+          </div>
+        </div>
+        <ChevronRight size={18} color="#A855F7" />
+      </div>
+
       {avgDurationMin != null && (
         <div style={{
           background: '#fff', borderRadius: '20px', padding: '16px',
@@ -1501,6 +1521,86 @@ const FunHeader = ({ emoji, title, subtitle }) => (
   </div>
 );
 
+// ============ HISTORY ============
+const HistoryScreen = ({ setScreen, workoutData }) => {
+  const dates = Object.keys(workoutData).sort().reverse();
+
+  const formatDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const formatSets = (exSets) => exSets
+    .filter(s => s.weight || s.reps)
+    .map(s => (s.weight ? `${s.weight}×${s.reps || '?'}` : `${s.reps}`))
+    .join(', ');
+
+  return (
+    <div style={{ padding: '24px 20px' }}>
+      <div onClick={() => setScreen('progress')} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#6B21A8', fontSize: '13px', fontWeight: '800', marginBottom: '16px', cursor: 'pointer', background: '#fff', padding: '8px 14px', borderRadius: '999px' }}>
+        <X size={14} /> Back
+      </div>
+
+      <FunHeader emoji="📖" title="Workout Log" subtitle={`${dates.length} workout${dates.length === 1 ? '' : 's'} in the books`} />
+
+      {dates.length === 0 && (
+        <div style={{ background: '#fff', borderRadius: '20px', padding: '32px 20px', textAlign: 'center', border: '2px solid #F1E5F5', boxShadow: '0 6px 18px rgba(45,27,61,0.08)' }}>
+          <div style={{ fontSize: '40px', marginBottom: '8px' }}>🗓️</div>
+          <div style={{ fontSize: '15px', fontWeight: '900', color: '#2D1B3D', marginBottom: '4px' }}>No workouts yet</div>
+          <div style={{ fontSize: '13px', color: '#9CA3AF', fontWeight: '700' }}>Finish a workout and it'll show up here.</div>
+        </div>
+      )}
+
+      {dates.map(date => {
+        const entry = workoutData[date];
+        const w = WORKOUTS[entry.day] || { name: entry.day, emoji: '💪', gradient: ['#A855F7', '#EC4899'], xp: 100 };
+        const loggedExercises = Object.entries(entry.sets || {}).filter(([, exSets]) => exSets.some(s => s.weight || s.reps));
+        const volume = Object.values(entry.sets || {}).flat().reduce((sum, s) => sum + (parseFloat(s.weight) || 0) * (parseFloat(s.reps) || 0), 0);
+        return (
+          <div key={date} style={{ background: '#fff', borderRadius: '20px', marginBottom: '14px', boxShadow: '0 6px 18px rgba(45,27,61,0.08)', border: '2px solid #F1E5F5', overflow: 'hidden' }}>
+            <div style={{ background: `linear-gradient(135deg, ${w.gradient[0]}, ${w.gradient[1]})`, padding: '14px 16px', color: '#fff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ fontSize: '26px' }}>{w.emoji}</div>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: '900' }}>{w.name}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.9, fontWeight: '700' }}>{formatDate(date)}</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '11px', fontWeight: '800' }}>
+                  {entry.week ? <div>WK {entry.week} · P{entry.phase}</div> : null}
+                  {entry.durationSec != null && <div style={{ opacity: 0.9 }}>⏱ {Math.max(1, Math.round(entry.durationSec / 60))} min</div>}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '14px 16px' }}>
+              {loggedExercises.length === 0 ? (
+                <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: '700' }}>No sets logged.</div>
+              ) : loggedExercises.map(([name, exSets], idx) => (
+                <div key={name} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '6px 0', borderTop: idx === 0 ? 'none' : '1px dashed #F1E5F5' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#2D1B3D', flex: 1 }}>{name}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#6B21A8', textAlign: 'right' }}>{formatSets(exSets)}</div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                {volume > 0 && (
+                  <div style={{ background: '#FFEDD5', color: '#EA580C', borderRadius: '999px', padding: '4px 12px', fontSize: '11px', fontWeight: '900' }}>
+                    🏋️ {Math.round(volume).toLocaleString()} lb volume
+                  </div>
+                )}
+                <div style={{ background: '#FEF3C7', color: '#D97706', borderRadius: '999px', padding: '4px 12px', fontSize: '11px', fontWeight: '900' }}>
+                  +{w.xp} XP
+                </div>
+              </div>
+              {entry.notes && (
+                <div style={{ marginTop: '10px', background: '#FFF5E6', border: '1px solid #FEF3C7', borderRadius: '12px', padding: '10px', fontSize: '12px', color: '#6B21A8', fontWeight: '600', fontStyle: 'italic' }}>
+                  📝 {entry.notes}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const BottomNav = ({ screen, setScreen }) => {
   const items = [
     { id: 'home', emoji: '🏠', label: 'Home' },
@@ -1519,7 +1619,7 @@ const BottomNav = ({ screen, setScreen }) => {
     }}>
       <div style={{ maxWidth: '480px', margin: '0 auto', display: 'flex', justifyContent: 'space-around' }}>
         {items.map(item => {
-          const active = screen === item.id || (item.id === 'workout' && screen === 'workoutDetail');
+          const active = screen === item.id || (item.id === 'workout' && screen === 'workoutDetail') || (item.id === 'progress' && screen === 'history');
           return (
             <div
               key={item.id}
