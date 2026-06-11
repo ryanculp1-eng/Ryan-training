@@ -213,15 +213,55 @@ const estimate1RM = (weight, reps) => {
   return w * (1 + r / 30);
 };
 
-// Every exercise across all days & phases, deduplicated by name (A→Z) — powers the swap picker
-const ALL_EXERCISES = (() => {
-  const seen = {};
+// Canonical exercise library (Ryan's home gym) — the source of truth for the swap feature.
+// Only names + category are needed: sets/reps/rest always come from the workout slot being swapped.
+const EXERCISE_LIBRARY = {
+  'Squat / Quad': ['Back Squat', 'Front Squat', 'High Bar Squat', 'Low Bar Squat', 'Pause Squat', 'Tempo Squat (3-1-1)', 'Box Squat', 'Zercher Squat', 'Goblet Squat', 'Heels Elevated Goblet Squat', 'Belt Squat', 'Belt Squat March', 'Hatfield Squat', 'Bulgarian Split Squat', 'Bulgarian Split Squat (3-1-1 tempo)', 'Front Foot Elevated Split Squat', 'Cossack Squat', 'Pistol Squat', 'Pistol Squat (band assisted)', 'Walking Lunges', 'Reverse Lunge', 'Forward Lunge', 'Lateral Lunge', 'Curtsy Lunge', 'Step-Ups', 'Lateral Step-Ups', 'Skater Squat', 'Single Leg Box Squat', 'Wall Sit'],
+  'Hinge / Posterior': ['Conventional Deadlift', 'Sumo Deadlift', 'Trap Bar Deadlift', 'Trap Bar Deadlift (high handle)', 'Trap Bar Deadlift (low handle)', 'Romanian Deadlift', 'DB Romanian Deadlift', 'Stiff Leg Deadlift', 'Snatch Grip RDL', 'Deficit Deadlift', 'Pause Deadlift', 'Block Pull / Rack Pull', 'Single Leg RDL', 'B-Stance RDL', 'Good Morning', 'Cable Pull-Through', 'Banded Hip Hinge', 'Barbell Hip Thrust', 'Single Leg Hip Thrust', 'Hip Thrust (pause)', 'Heavy Hip Thrust (4-rep max)', 'Frog Pump', 'Glute Bridge', 'Banded Glute Bridge', 'Nordic Curl (assisted)', 'Nordic Curl (full)', 'Eccentric Nordic Curl', 'Back Extension', 'Back Extension (weighted)', 'Reverse Hyper', 'Single Leg Back Extension'],
+  'Chest': ['Barbell Bench Press', 'Pause Bench Press', 'Close Grip Bench Press', 'Incline Barbell Bench Press', 'Decline Barbell Bench Press', 'Floor Press', 'Flat DB Bench Press', 'Incline DB Bench Press', 'Decline DB Bench Press', 'Low Incline DB Press', 'Neutral Grip DB Press', 'Single Arm DB Press', 'Push-Up', 'Deficit Push-Up', 'Band Resisted Push-Up', 'Diamond Push-Up', 'Archer Push-Up', 'Weighted Dips (chest, lean forward)', 'Flat DB Fly', 'Incline DB Fly', 'Cable Crossover (low-to-high)', 'Cable Crossover (high-to-low)', 'Cable Crossover (mid)', 'Single Arm Cable Fly', 'Cable Press (standing)', 'Cable Press (single arm)', 'Cable Press (kneeling)', 'Svend Press'],
+  'Shoulders': ['Barbell Overhead Press', 'Push Press', 'Standing DB Press', 'Seated DB Press', 'Arnold Press', 'Z Press', 'Landmine Press', 'Landmine Half Kneeling Press', 'Landmine Thruster', 'DB Lateral Raise', 'DB Lateral Raise (3-pos pause)', 'Cable Lateral Raise (single arm)', 'Cable Lateral Raise (behind back)', 'DB Front Raise', 'Plate Front Raise', 'DB Rear Delt Fly', 'Cable Rear Delt Fly', 'Cable Face Pull', 'Band Face Pull', 'Banded Pull-Apart', 'Banded Y-Raise', 'Cuban Press'],
+  'Triceps': ['Weighted Dips (upright, tricep focus)', 'EZ Bar Skull Crusher', 'DB Skull Crusher', 'French Press', 'Overhead DB Tricep Extension', 'Single Arm Cable Tricep Extension', 'Rope Tricep Pushdown', 'Single Arm Cable Pushdown', 'V-Bar Pushdown', 'Straight Bar Pushdown', 'Overhead Cable Tricep Extension (rope)', 'Tricep Kickback (DB)', 'Tricep Kickback (cable)', 'JM Press'],
+  'Back / Pull': ['Pull-Up', 'Wide Grip Pull-Up', 'Chin-Up', 'Neutral Grip Pull-Up', 'Weighted Pull-Up', 'Pull-Up Negative', 'Band Assisted Pull-Up', 'Cable Pulldown', 'Wide Grip Pulldown', 'Close Grip Pulldown', 'Neutral Grip Pulldown', 'Single Arm Pulldown', 'Straight Arm Pulldown', 'Barbell Bent Over Row', 'Pendlay Row', 'T-Bar Row (landmine)', 'Meadows Row (landmine, single arm)', 'Chest Supported DB Row', 'Single Arm DB Row', 'Seal Row', 'Kroc Row', 'Cable Row (seated)', 'Cable Row (single arm)', 'Cable Row (chest supported)', 'Inverted Row', 'Banded Row', 'Cable Pullover', 'DB Pullover', 'DB Shrug', 'Barbell Shrug', 'Trap Bar Shrug'],
+  'Biceps': ['Barbell Curl', 'EZ Bar Curl', 'Wide Grip Barbell Curl', 'Close Grip Barbell Curl', 'Standing DB Curl', 'Seated DB Curl', 'Incline DB Curl', 'Spider Curl', 'Preacher Curl (EZ bar)', 'Preacher Curl (DB)', 'Hammer Curl', 'Cross-Body Hammer Curl', 'Rope Hammer Curl', 'Cable Curl (straight bar)', 'Cable Curl (single arm)', 'Bayesian Curl (cable, arm behind)', 'Drag Curl', 'Zottman Curl', '21s', 'Concentration Curl', 'Reverse Curl (EZ bar)'],
+  'Core': ['Plank', 'Side Plank', 'Side Plank w/ Reach', 'Side Plank w/ Hip Drop', 'Long Lever Plank', 'RKC Plank', 'Dead Bug', 'Dead Bug (slow tempo)', 'Dead Bug w/ Band', 'Bird Dog', 'Bird Dog (loaded)', 'Pallof Press', 'Pallof Press (3s hold)', 'Pallof Anti-Lift', 'Cable Crunch (kneeling)', 'Cable Crunch (standing)', 'Decline Sit-Up', 'Weighted Decline Sit-Up', 'Hanging Knee Raise', 'Hanging Leg Raise', 'Toes to Bar', 'Windshield Wipers', 'L-Sit Hold', 'Russian Twist', 'Cable Wood Chop (high to low)', 'Cable Wood Chop (low to high)', 'Hollow Body Hold', 'Hollow Body Rock', 'V-Up', 'Bicycle Crunch', 'Mountain Climber', 'Copenhagen Plank', 'McGill Curl-Up'],
+  'Athletic / Power': ['Box Jump', 'Box Jump (depth)', 'Lateral Box Jump', 'Broad Jump', 'Vertical Jump', 'Trap Bar Jump', 'Med Ball Slam', 'Med Ball Overhead Throw', 'Med Ball Rotational Throw', 'Med Ball Chest Pass', 'Med Ball Side Toss', 'Single Leg Box Jump', 'DB Swing (KB substitute)', 'DB Power Clean', 'DB Push Press', 'Trap Bar Power Shrug', 'Barbell Power Clean', 'Hang Clean', 'Push Press (barbell)', 'Jerk', 'Single Arm DB Snatch'],
+  'Carries / Conditioning': ['Farmers Carry', 'Suitcase Carry', 'Overhead Carry', 'Front Rack Carry', 'Trap Bar Carry', 'Zercher Carry', 'Goblet Carry', 'Banded Sprints', 'Band-Resisted Run'],
+  'Mobility / Warmup': ['90/90 Breathing', '90/90 Stretch', 'Couch Stretch', 'World\'s Greatest Stretch', 'Cat-Cow', 'Thoracic Rotation', 'Hip CARs', 'Shoulder CARs', 'Banded Hip Distraction', 'Banded Shoulder Pass-Through', 'Wall Slides', 'Dynamic Lunge w/ Rotation', 'Leg Swings', 'Arm Circles', 'Inchworm']
+};
+
+// Form tips harvested from the program, so common lifts keep their coaching cue when swapped in
+const PROGRAM_TIPS = (() => {
+  const tips = {};
   Object.values(WORKOUTS).forEach(day => {
-    Object.values(day.exercises).forEach(phaseList => {
-      phaseList.forEach(ex => { if (!seen[ex.name]) seen[ex.name] = ex; });
+    Object.values(day.exercises).forEach(list => {
+      list.forEach(ex => { if (ex.tip && !tips[ex.name]) tips[ex.name] = ex.tip; });
     });
   });
-  return Object.values(seen).sort((a, b) => a.name.localeCompare(b.name));
+  return tips;
+})();
+
+// Flat, deduplicated, A→Z list powering the swap picker: the full library plus any
+// program exercises whose exact name isn't in the library.
+const ALL_EXERCISES = (() => {
+  const seen = {};
+  const out = [];
+  Object.entries(EXERCISE_LIBRARY).forEach(([category, names]) => {
+    names.forEach(name => {
+      if (seen[name]) return;
+      seen[name] = true;
+      out.push({ name, category, tip: PROGRAM_TIPS[name] || '' });
+    });
+  });
+  Object.values(WORKOUTS).forEach(day => {
+    Object.values(day.exercises).forEach(list => {
+      list.forEach(ex => {
+        if (seen[ex.name]) return;
+        seen[ex.name] = true;
+        out.push({ name: ex.name, category: 'Program', tip: ex.tip || '' });
+      });
+    });
+  });
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 })();
 
 // Most recent earlier session's logged sets for an exercise, formatted as readable text
@@ -808,10 +848,13 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
   };
 
   const applySwap = (originalName, newEx) => {
-    saveSwaps({ ...swaps, [selectedDay]: { ...daySwaps, [originalName]: newEx } });
+    const baseEx = baseExercises.find(b => b.name === originalName) || {};
+    // Keep the original slot's programming (sets/reps/rest) — only the movement & its tip change
+    const replacement = { ...baseEx, name: newEx.name, tip: newEx.tip || '' };
+    saveSwaps({ ...swaps, [selectedDay]: { ...daySwaps, [originalName]: replacement } });
     setSets(prev => ({
       ...prev,
-      [newEx.name]: prev[newEx.name] || Array(newEx.sets).fill(null).map(() => ({ weight: '', reps: '', done: false }))
+      [replacement.name]: prev[replacement.name] || Array(replacement.sets).fill(null).map(() => ({ weight: '', reps: '', done: false }))
     }));
     setSwapTarget(null);
     setSwapQuery('');
@@ -835,6 +878,8 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
 
   const elapsedSec = startTime ? Math.floor((now - startTime) / 1000) : 0;
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  const swapMatches = ALL_EXERCISES.filter(ex => ex.name.toLowerCase().includes(swapQuery.toLowerCase()));
 
   const completeWorkout = () => {
     const effectiveNames = effectiveExercises.map(ex => ex.name);
@@ -968,9 +1013,11 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
               </div>
             </div>
 
-            <div style={{ fontSize: '12px', color: '#6B21A8', fontStyle: 'italic', marginBottom: '12px', lineHeight: '1.3' }}>
-              ▸ {ex.tip}
-            </div>
+            {ex.tip && (
+              <div style={{ fontSize: '12px', color: '#6B21A8', fontStyle: 'italic', marginBottom: '12px', lineHeight: '1.3' }}>
+                ▸ {ex.tip}
+              </div>
+            )}
 
             <div style={{ background: '#FFF5E6', borderRadius: '12px', padding: '10px', border: '1px solid #FEF3C7' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 30px', gap: '8px', marginBottom: '6px' }}>
@@ -1043,7 +1090,7 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ background: '#fff', width: '100%', maxWidth: '480px', borderRadius: '24px 24px 0 0', padding: '20px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 30px rgba(45, 27, 61, 0.25)' }}
+            style={{ background: '#fff', width: '100%', maxWidth: '480px', borderRadius: '24px 24px 0 0', padding: '20px', height: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 30px rgba(45, 27, 61, 0.25)' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div style={{ fontSize: '17px', fontWeight: '900', color: '#2D1B3D' }}>🔄 Swap exercise</div>
@@ -1056,8 +1103,12 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
               placeholder="Search exercises…"
               style={{ width: '100%', background: '#FFF5E6', border: '2px solid #FEF3C7', borderRadius: '12px', padding: '12px', color: '#2D1B3D', fontSize: '15px', fontWeight: '700', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
             />
-            <div style={{ overflowY: 'auto', marginTop: '12px' }}>
-              {ALL_EXERCISES.filter(ex => ex.name.toLowerCase().includes(swapQuery.toLowerCase())).map(ex => (
+            <div style={{ flex: 1, overflowY: 'auto', marginTop: '12px' }}>
+              {swapMatches.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', fontWeight: '700', padding: '24px 0' }}>
+                  No exercises found
+                </div>
+              ) : swapMatches.map(ex => (
                 <div
                   key={ex.name}
                   onClick={() => applySwap(swapTarget, ex)}
@@ -1065,7 +1116,7 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
                 >
                   <div>
                     <div style={{ fontSize: '14px', fontWeight: '800', color: '#2D1B3D' }}>{ex.name}</div>
-                    <div style={{ fontSize: '11px', color: '#6B21A8', fontWeight: '600' }}>{ex.sets} × {ex.reps}</div>
+                    <div style={{ fontSize: '11px', color: '#6B21A8', fontWeight: '600' }}>{ex.category}</div>
                   </div>
                   <ChevronRight size={16} color="#A855F7" />
                 </div>
