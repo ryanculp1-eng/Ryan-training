@@ -1340,6 +1340,7 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
   const [weight, setWeight] = useState('');
   const [bf, setBf] = useState('');
   const [waist, setWaist] = useState('');
+  const [prOpen, setPrOpen] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -1404,14 +1405,20 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
         marginBottom: '20px', boxShadow: '0 6px 18px rgba(45, 27, 61, 0.08)',
         border: '2px solid #FEF3C7'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+        <div
+          onClick={() => setPrOpen(open => !open)}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: prOpen ? '14px' : 0, cursor: 'pointer' }}
+        >
           <Trophy size={18} color="#F59E0B" />
           <div style={{ fontSize: '15px', fontWeight: '900' }}>PR Leaderboard</div>
-          <div style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: '800', color: '#9CA3AF', letterSpacing: '0.5px' }}>
-            by est. 1RM
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '800', color: '#9CA3AF', letterSpacing: '0.5px' }}>
+              {prList.length === 0 ? 'by est. 1RM' : `${prList.length} lift${prList.length === 1 ? '' : 's'}`}
+            </span>
+            <ChevronRight size={18} color="#A855F7" style={{ transform: prOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
           </div>
         </div>
-        {prList.length === 0 ? (
+        {prOpen && (prList.length === 0 ? (
           <div style={{ fontSize: '13px', color: '#9CA3AF', fontWeight: '700', textAlign: 'center', padding: '12px 0' }}>
             No PRs yet — log a weighted set to start the board. 💪
           </div>
@@ -1431,7 +1438,7 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
               {Math.round(pr.e1rm)} 1RM
             </div>
           </div>
-        ))}
+        )))}
       </div>
 
       {avgDurationMin != null && (
