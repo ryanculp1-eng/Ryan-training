@@ -180,6 +180,50 @@ const PHASES = {
   3: { name: 'Strength + Definition', setRep: '4–5 × 4–6 @ RPE 8–9' }
 };
 
+// The training rotation — workouts cycle through these in order, advancing after each completed session
+const DAY_SEQUENCE = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
+
+// Which workout to suggest next. Stays on today's if already trained; otherwise the day AFTER
+// the most recently completed workout — so it rotates Day 1 → 2 → … → 5 → 1 regardless of the
+// calendar, and rest/skip days never knock the rotation off track.
+const getSuggestedDay = (workoutData, today) => {
+  if (workoutData[today]) return workoutData[today].day;
+  const dates = Object.keys(workoutData).sort();
+  if (dates.length === 0) return DAY_SEQUENCE[0];
+  const lastDay = workoutData[dates[dates.length - 1]].day;
+  const idx = DAY_SEQUENCE.indexOf(lastDay);
+  // Unknown last day (e.g. legacy data) falls back to the start of the rotation
+  if (idx === -1) return DAY_SEQUENCE[0];
+  return DAY_SEQUENCE[(idx + 1) % DAY_SEQUENCE.length];
+};
+
+// Movements tracked by reps/time only — no external load to log, so the weight field is hidden.
+// Anything with "Weighted" in the name is excluded by usesWeight() below, so weighted pull-ups,
+// weighted dips, etc. keep their weight field.
+const NO_WEIGHT_EXERCISES = new Set([
+  // Mobility & warmups
+  '90/90 Breathing', '90/90 Stretch', 'Couch Stretch', "World's Greatest Stretch", 'Cat-Cow', 'Thoracic Rotation', 'Hip CARs', 'Shoulder CARs', 'Banded Hip Distraction', 'Banded Shoulder Pass-Through', 'Wall Slides', 'Dynamic Lunge w/ Rotation', 'Leg Swings', 'Arm Circles', 'Inchworm', 'Dynamic Warmup',
+  // Bands (no plate load)
+  'Band Pull-Apart', 'Banded Pull-Apart', 'Banded Y-Raise', 'Band Face Pull', 'Banded Sprints', 'Band-Resisted Run', 'Band Sprints',
+  // Bodyweight core
+  'Plank', 'Side Plank', 'Side Plank w/ Reach', 'Side Plank w/ Hip Drop', 'Long Lever Plank', 'RKC Plank', 'Dead Bug', 'Dead Bug (slow)', 'Dead Bug (slow tempo)', 'Bird Dog', 'Hanging Knee Raise', 'Hanging Leg Raise', 'Toes to Bar', 'Windshield Wipers', 'L-Sit Hold', 'Hollow Body Hold', 'Hollow Body Rock', 'V-Up', 'Bicycle Crunch', 'Mountain Climber', 'Copenhagen Plank', 'McGill Curl-Up',
+  // Bodyweight lower / posterior
+  'Pistol Squat', 'Pistol Squat (band assisted)', 'Skater Squat', 'Wall Sit', 'Nordic Curl', 'Nordic Curl (assisted)', 'Nordic Curl (full)', 'Eccentric Nordic Curl',
+  // Bodyweight push
+  'Push-Up', 'Deficit Push-Up', 'Diamond Push-Up', 'Archer Push-Up', 'Band Resisted Push-Up',
+  // Bodyweight pull
+  'Pull-Up', 'Wide Grip Pull-Up', 'Chin-Up', 'Neutral Grip Pull-Up', 'Pull-Up Negative', 'Band Assisted Pull-Up', 'Inverted Row', 'Banded Row', 'Pull Ups (or Pulldown)',
+  // Plyometric / jumps (no logged load)
+  'Box Jump', 'Box Jump (depth)', 'Lateral Box Jump', 'Broad Jump', 'Vertical Jump', 'Single Leg Box Jump', 'Step Box Jumps', 'Box Jumps'
+]);
+
+// True if the exercise has an external load worth logging (so we show the weight field).
+const usesWeight = (name) => {
+  if (!name) return true;
+  if (/weighted/i.test(name)) return true; // e.g. Weighted Pull Ups, Weighted Dips
+  return !NO_WEIGHT_EXERCISES.has(name);
+};
+
 const MACRO_TARGETS = { calories: 2400, protein: 180, carbs: 260, fat: 70, fiber: 35, water: 16 };
 
 const ACHIEVEMENTS = [
@@ -450,7 +494,7 @@ const TrainingApp = () => {
         {screen === 'workout' && <WorkoutScreen {...{ setScreen, setSelectedDay, workoutData, currentPhase, currentWeek }} />}
         {screen === 'workoutDetail' && selectedDay && <WorkoutDetailScreen {...{ selectedDay, setScreen, today, workoutData, saveWorkouts, setCelebration, currentPhase, currentWeek, prs, savePRs, swaps, saveSwaps }} />}
         {screen === 'macros' && <MacrosScreen {...{ setScreen, today, todayMacros, macroTargets, macroData, saveMacros, setCelebration }} />}
-        {screen === 'progress' && <ProgressScreen {...{ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements, totalXP, level }} />}
+        {screen === 'progress' && <ProgressScreen {...{ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements, totalXP, level, prs }} />}
         {screen === 'history' && <HistoryScreen {...{ setScreen, workoutData }} />}
         {screen === 'settings' && <SettingsScreen {...{ setScreen, userName, saveName, startDate, saveStartDate, macroTargets, saveTargets }} />}
       </div>
@@ -461,12 +505,10 @@ const TrainingApp = () => {
 };
 
 // ============ HOME ============
-const HomeScreen = ({ today, todayMacros, macroTargets, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, userName, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase, restDays, saveRestDays }) => {
+const HomeScreen = ({ today, workoutsThisWeek, bodyData, setScreen, setSelectedDay, workoutData, userName, totalXP, level, xpInLevel, unlockedAchievements, currentWeek, currentPhase, restDays, saveRestDays }) => {
   const recentBody = Object.keys(bodyData).sort().reverse()[0];
   const recentWeight = recentBody ? bodyData[recentBody].weight : '205';
-  const dayOfWeek = new Date().getDay();
-  const dayMap = { 1: 'Day 1', 2: 'Day 2', 3: 'Day 3', 4: 'Day 4', 5: 'Day 5' };
-  const suggestedDay = dayMap[dayOfWeek] || 'Day 1';
+  const suggestedDay = getSuggestedDay(workoutData, today);
   const completedToday = workoutData[today];
   const isRestToday = !!restDays[today];
   const w = WORKOUTS[suggestedDay];
@@ -535,29 +577,70 @@ const HomeScreen = ({ today, todayMacros, macroTargets, workoutsThisWeek, bodyDa
         background: '#fff',
         borderRadius: '14px',
         padding: '12px 16px',
-        marginBottom: '20px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        marginBottom: '12px',
         boxShadow: '0 4px 12px rgba(45, 27, 61, 0.08)',
         border: '2px solid #F1E5F5'
       }}>
-        <div>
-          <div style={{ fontSize: '10px', fontWeight: '900', color: '#6B21A8', letterSpacing: '1.5px' }}>
-            PHASE {currentPhase} · {PHASES[currentPhase].name.toUpperCase()}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: '900', color: '#6B21A8', letterSpacing: '1.5px' }}>
+              PHASE {currentPhase} · {PHASES[currentPhase].name.toUpperCase()}
+            </div>
+            <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: '700', marginTop: '2px' }}>
+              {PHASES[currentPhase].setRep}
+            </div>
           </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: '700', marginTop: '2px' }}>
-            {PHASES[currentPhase].setRep}
-          </div>
+          <div style={{
+            background: 'linear-gradient(135deg, #FFD93D, #FFA94D)',
+            borderRadius: '999px',
+            padding: '4px 12px',
+            fontSize: '12px',
+            fontWeight: '900',
+            color: '#2D1B3D'
+          }}>WEEK {currentWeek}/12</div>
         </div>
-        <div style={{
-          background: 'linear-gradient(135deg, #FFD93D, #FFA94D)',
-          borderRadius: '999px',
-          padding: '4px 12px',
-          fontSize: '12px',
-          fontWeight: '900',
-          color: '#2D1B3D'
-        }}>WEEK {currentWeek}/12</div>
+        {/* 12-week cycle progress — fills as the weeks advance */}
+        <div style={{ height: '8px', background: '#F1E5F5', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', width: `${(currentWeek / 12) * 100}%`,
+            background: 'linear-gradient(90deg, #A855F7, #EC4899)',
+            borderRadius: '4px', transition: 'width 0.4s'
+          }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '9px', fontWeight: '800', letterSpacing: '0.3px' }}>
+          <span style={{ color: currentPhase === 1 ? '#6B21A8' : '#C4B5D4' }}>P1 Foundation</span>
+          <span style={{ color: currentPhase === 2 ? '#6B21A8' : '#C4B5D4' }}>P2 Hypertrophy</span>
+          <span style={{ color: currentPhase === 3 ? '#6B21A8' : '#C4B5D4' }}>P3 Strength</span>
+        </div>
+      </div>
+
+      {/* Day rotation — the next workout is highlighted; tap any day to jump to it */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '20px' }}>
+        {DAY_SEQUENCE.map(day => {
+          const dw = WORKOUTS[day];
+          const isNext = day === suggestedDay;
+          return (
+            <div
+              key={day}
+              onClick={() => { setSelectedDay(day); setScreen('workoutDetail'); }}
+              style={{
+                flex: isNext ? 1.5 : 1,
+                background: isNext ? `linear-gradient(135deg, ${dw.gradient[0]}, ${dw.gradient[1]})` : '#fff',
+                border: `2px solid ${isNext ? dw.gradient[0] : '#F1E5F5'}`,
+                borderRadius: '14px', padding: '10px 4px', textAlign: 'center', cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              <div style={{ fontSize: '20px' }}>{dw.emoji}</div>
+              <div style={{
+                fontSize: '9px', fontWeight: '900', letterSpacing: '0.5px', marginTop: '2px',
+                color: isNext ? '#fff' : '#9CA3AF'
+              }}>
+                {isNext ? 'NEXT UP' : day.replace('Day ', 'D')}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {isRestToday ? (
@@ -650,40 +733,6 @@ const HomeScreen = ({ today, todayMacros, macroTargets, workoutsThisWeek, bodyDa
         <FunStat emoji="⚖️" label="WEIGHT" value={`${recentWeight} lb`} bg="#DBEAFE" accent="#2563EB" />
       </div>
 
-      <div
-        onClick={() => setScreen('macros')}
-        style={{
-          background: '#fff',
-          borderRadius: '24px',
-          padding: '20px',
-          marginBottom: '20px',
-          cursor: 'pointer',
-          boxShadow: '0 8px 24px rgba(45, 27, 61, 0.08)',
-          border: '2px solid #FFE5EC'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ fontSize: '20px' }}>🍽️</div>
-            <div style={{ fontSize: '14px', fontWeight: '900', color: '#2D1B3D' }}>FUEL CHECK</div>
-          </div>
-          <ChevronRight size={18} color="#A855F7" />
-        </div>
-        <FunMacroBar label="Protein" emoji="🍗" current={todayMacros.protein} target={macroTargets.protein} color="#FF6B6B" unit="g" />
-        <FunMacroBar label="Carbs" emoji="🍚" current={todayMacros.carbs} target={macroTargets.carbs} color="#4D96FF" unit="g" />
-        <FunMacroBar label="Fat" emoji="🥑" current={todayMacros.fat} target={macroTargets.fat} color="#FFD93D" unit="g" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '14px', paddingTop: '14px', borderTop: '2px dashed #F1E5F5' }}>
-          <div>
-            <div style={{ fontSize: '10px', color: '#A855F7', fontWeight: '800', letterSpacing: '1px' }}>CALORIES</div>
-            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{todayMacros.calories} <span style={{ fontSize: '12px', color: '#9CA3AF' }}>/ {macroTargets.calories}</span></div>
-          </div>
-          <div>
-            <div style={{ fontSize: '10px', color: '#A855F7', fontWeight: '800', letterSpacing: '1px' }}>💧 WATER</div>
-            <div style={{ fontSize: '22px', fontWeight: '900', color: '#2D1B3D' }}>{todayMacros.water} <span style={{ fontSize: '12px', color: '#9CA3AF' }}>/ {macroTargets.water}</span></div>
-          </div>
-        </div>
-      </div>
-
       {unlockedAchievements.length > 0 && (
         <div style={{
           background: '#fff',
@@ -728,39 +777,17 @@ const FunStat = ({ emoji, label, value, bg, accent }) => (
   </div>
 );
 
-const FunMacroBar = ({ label, emoji, current, target, color, unit }) => {
-  const pct = Math.min(100, (current / target) * 100);
-  return (
-    <div style={{ marginBottom: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ fontSize: '14px' }}>{emoji}</div>
-          <div style={{ fontSize: '12px', fontWeight: '800', color: '#2D1B3D' }}>{label}</div>
-        </div>
-        <div style={{ fontSize: '12px', fontWeight: '800', color: '#2D1B3D' }}>
-          {current}<span style={{ color: '#9CA3AF', fontWeight: '600' }}>/{target}{unit}</span>
-        </div>
-      </div>
-      <div style={{ height: '10px', background: '#F1E5F5', borderRadius: '5px', overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', width: `${pct}%`,
-          background: `linear-gradient(90deg, ${color}, ${color}dd)`,
-          borderRadius: '5px', transition: 'width 0.4s ease'
-        }} />
-      </div>
-    </div>
-  );
-};
-
 // ============ WORKOUT LIST ============
 const WorkoutScreen = ({ setScreen, setSelectedDay, workoutData, currentPhase, currentWeek }) => {
   const today = new Date().toISOString().split('T')[0];
+  const suggestedDay = getSuggestedDay(workoutData, today);
   return (
     <div style={{ padding: '24px 20px' }}>
       <FunHeader emoji="🏋️" title="Pick Your Battle" subtitle={`Phase ${currentPhase} · Week ${currentWeek}`} />
       {Object.keys(WORKOUTS).map(day => {
         const w = WORKOUTS[day];
         const completed = workoutData[today]?.day === day;
+        const isNext = !completed && day === suggestedDay;
         const exercises = w.exercises[currentPhase];
         return (
           <div
@@ -772,7 +799,7 @@ const WorkoutScreen = ({ setScreen, setSelectedDay, workoutData, currentPhase, c
               padding: '18px',
               marginBottom: '14px',
               cursor: 'pointer',
-              border: `3px solid ${completed ? w.gradient[0] : '#F1E5F5'}`,
+              border: `3px solid ${completed || isNext ? w.gradient[0] : '#F1E5F5'}`,
               boxShadow: '0 6px 18px rgba(45, 27, 61, 0.08)',
               display: 'flex', alignItems: 'center', gap: '14px'
             }}
@@ -785,7 +812,10 @@ const WorkoutScreen = ({ setScreen, setSelectedDay, workoutData, currentPhase, c
               fontSize: '32px', flexShrink: 0
             }}>{w.emoji}</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '10px', fontWeight: '800', color: w.gradient[0], letterSpacing: '1.5px', marginBottom: '2px' }}>{day.toUpperCase()}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                <span style={{ fontSize: '10px', fontWeight: '800', color: w.gradient[0], letterSpacing: '1.5px' }}>{day.toUpperCase()}</span>
+                {isNext && <span style={{ fontSize: '9px', fontWeight: '900', color: '#fff', background: w.gradient[0], borderRadius: '999px', padding: '1px 7px', letterSpacing: '0.5px' }}>NEXT UP</span>}
+              </div>
               <div style={{ fontSize: '17px', fontWeight: '900', color: '#2D1B3D' }}>{w.name}</div>
               <div style={{ fontSize: '12px', color: '#6B21A8', fontWeight: '600', marginTop: '2px' }}>{w.focus} · {exercises.length} ex</div>
             </div>
@@ -835,8 +865,9 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
       [exName]: prev[exName].map((s, i) => {
         if (i !== setIdx) return s;
         const next = { ...s, [field]: value };
-        // Auto-check the set once both weight and reps are filled (never auto-unchecks)
-        if (next.weight !== '' && next.reps !== '') next.done = true;
+        // Auto-check once the set is filled (never auto-unchecks). Bodyweight moves only need reps.
+        const needsWeight = usesWeight(exName);
+        if (next.reps !== '' && (!needsWeight || next.weight !== '')) next.done = true;
         return next;
       })
     }));
@@ -971,6 +1002,9 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
         const exSets = sets[ex.name] || [];
         const allDone = exSets.length > 0 && exSets.every(s => s.done);
         const lastPerf = getLastPerformance(ex.name, workoutData, today);
+        const weighted = usesWeight(ex.name);
+        // Drop the weight column for bodyweight moves so the grid stays SET · REPS · ✓
+        const setCols = weighted ? '30px 1fr 1fr 30px' : '30px 1fr 30px';
         // Mark each set that sets a new running best beyond the all-time PR snapshot
         let runBest = (basePRs[ex.name] && basePRs[ex.name].e1rm) || 0;
         const trophies = exSets.map(s => {
@@ -1030,14 +1064,14 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
             )}
 
             <div style={{ background: '#FFF5E6', borderRadius: '12px', padding: '10px', border: '1px solid #FEF3C7' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 30px', gap: '8px', marginBottom: '6px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: setCols, gap: '8px', marginBottom: '6px' }}>
                 <div style={{ fontSize: '9px', color: '#9CA3AF', fontWeight: '900', letterSpacing: '1px', textAlign: 'center' }}>SET</div>
-                <div style={{ fontSize: '9px', color: '#2563EB', fontWeight: '900', letterSpacing: '1px', textAlign: 'center' }}>WEIGHT</div>
+                {weighted && <div style={{ fontSize: '9px', color: '#2563EB', fontWeight: '900', letterSpacing: '1px', textAlign: 'center' }}>WEIGHT</div>}
                 <div style={{ fontSize: '9px', color: '#DC2626', fontWeight: '900', letterSpacing: '1px', textAlign: 'center' }}>REPS</div>
                 <div></div>
               </div>
               {exSets.map((set, setIdx) => (
-                <div key={setIdx} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 30px', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+                <div key={setIdx} style={{ display: 'grid', gridTemplateColumns: setCols, gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
                   <div style={{
                     position: 'relative',
                     fontSize: '13px', fontWeight: '900',
@@ -1047,21 +1081,23 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
                     {setIdx + 1}
                     {trophies[setIdx] && <span style={{ position: 'absolute', top: '-9px', right: '-3px', fontSize: '12px' }}>🏆</span>}
                   </div>
-                  <input
-                    type="number"
-                    className="set-input"
-                    placeholder="lb"
-                    value={set.weight}
-                    onChange={(e) => updateSet(ex.name, setIdx, 'weight', e.target.value)}
-                    onKeyDown={handleSetEnter}
-                    style={{
-                      width: '100%', background: '#fff',
-                      border: `2px solid ${set.done ? w.gradient[0] : '#2563EB'}55`,
-                      borderRadius: '8px', padding: '6px',
-                      color: '#2D1B3D', fontSize: '14px', fontWeight: '900',
-                      outline: 'none', textAlign: 'center', boxSizing: 'border-box'
-                    }}
-                  />
+                  {weighted && (
+                    <input
+                      type="number"
+                      className="set-input"
+                      placeholder="lb"
+                      value={set.weight}
+                      onChange={(e) => updateSet(ex.name, setIdx, 'weight', e.target.value)}
+                      onKeyDown={handleSetEnter}
+                      style={{
+                        width: '100%', background: '#fff',
+                        border: `2px solid ${set.done ? w.gradient[0] : '#2563EB'}55`,
+                        borderRadius: '8px', padding: '6px',
+                        color: '#2D1B3D', fontSize: '16px', fontWeight: '900',
+                        outline: 'none', textAlign: 'center', boxSizing: 'border-box'
+                      }}
+                    />
+                  )}
                   <input
                     type="number"
                     className="set-input"
@@ -1073,7 +1109,7 @@ const WorkoutDetailScreen = ({ selectedDay, setScreen, today, workoutData, saveW
                       width: '100%', background: '#fff',
                       border: `2px solid ${set.done ? w.gradient[0] : '#DC2626'}55`,
                       borderRadius: '8px', padding: '6px',
-                      color: '#2D1B3D', fontSize: '14px', fontWeight: '900',
+                      color: '#2D1B3D', fontSize: '16px', fontWeight: '900',
                       outline: 'none', textAlign: 'center', boxSizing: 'border-box'
                     }}
                   />
@@ -1300,7 +1336,7 @@ const FunMacroInput = ({ emoji, label, field, value, target, color, bg, unit, on
 };
 
 // ============ PROGRESS ============
-const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements }) => {
+const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody, unlockedAchievements, prs = {} }) => {
   const [weight, setWeight] = useState('');
   const [bf, setBf] = useState('');
   const [waist, setWaist] = useState('');
@@ -1326,6 +1362,13 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
 
   const durations = Object.values(workoutData).map(wd => wd.durationSec).filter(d => d != null && d > 0);
   const avgDurationMin = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length / 60) : null;
+
+  // Personal-record leaderboard: every lift's best set, ranked by estimated 1-rep max
+  const prList = Object.entries(prs)
+    .map(([name, pr]) => ({ name, ...pr }))
+    .filter(pr => pr.e1rm > 0)
+    .sort((a, b) => b.e1rm - a.e1rm);
+  const rankBadge = (i) => (i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`);
 
   return (
     <div style={{ padding: '24px 20px' }}>
@@ -1354,6 +1397,41 @@ const ProgressScreen = ({ setScreen, workoutData, macroData, bodyData, saveBody,
           </div>
         </div>
         <ChevronRight size={18} color="#A855F7" />
+      </div>
+
+      <div style={{
+        background: '#fff', borderRadius: '20px', padding: '20px',
+        marginBottom: '20px', boxShadow: '0 6px 18px rgba(45, 27, 61, 0.08)',
+        border: '2px solid #FEF3C7'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <Trophy size={18} color="#F59E0B" />
+          <div style={{ fontSize: '15px', fontWeight: '900' }}>PR Leaderboard</div>
+          <div style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: '800', color: '#9CA3AF', letterSpacing: '0.5px' }}>
+            by est. 1RM
+          </div>
+        </div>
+        {prList.length === 0 ? (
+          <div style={{ fontSize: '13px', color: '#9CA3AF', fontWeight: '700', textAlign: 'center', padding: '12px 0' }}>
+            No PRs yet — log a weighted set to start the board. 💪
+          </div>
+        ) : prList.map((pr, i) => (
+          <div key={pr.name} style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '10px 0', borderTop: i === 0 ? 'none' : '1px dashed #F1E5F5'
+          }}>
+            <div style={{ fontSize: i < 3 ? '20px' : '13px', fontWeight: '900', color: '#9CA3AF', width: '30px', textAlign: 'center', flexShrink: 0 }}>
+              {rankBadge(i)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#2D1B3D', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pr.name}</div>
+              <div style={{ fontSize: '11px', color: '#6B21A8', fontWeight: '700', marginTop: '1px' }}>{pr.weight}lb × {pr.reps}{pr.date ? ` · ${pr.date}` : ''}</div>
+            </div>
+            <div style={{ background: '#FEF3C7', color: '#D97706', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: '900', flexShrink: 0 }}>
+              {Math.round(pr.e1rm)} 1RM
+            </div>
+          </div>
+        ))}
       </div>
 
       {avgDurationMin != null && (
@@ -1618,7 +1696,6 @@ const BottomNav = ({ screen, setScreen }) => {
   const items = [
     { id: 'home', emoji: '🏠', label: 'Home' },
     { id: 'workout', emoji: '🏋️', label: 'Train' },
-    { id: 'macros', emoji: '🍽️', label: 'Fuel' },
     { id: 'progress', emoji: '🏆', label: 'Stats' }
   ];
   return (
